@@ -1,0 +1,1 @@
+Purpose: Store original raw input data. Large raw files should stay out of Git.
