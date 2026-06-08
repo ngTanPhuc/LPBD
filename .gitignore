@@ -219,3 +219,7 @@ __marimo__/
 
 # Datasets
 data/raw/*
+!data/raw/.gitkeep
+!data/raw/images/
+data/raw/images/*
+!data/raw/images/.gitkeep
