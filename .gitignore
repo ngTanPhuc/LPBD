@@ -221,3 +221,6 @@ __marimo__/
 data/*
 !data/.gitkeep
 
+# Models
+models/*
+!models/.gitkeep
