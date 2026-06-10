@@ -218,25 +218,28 @@ This creates:
 data/processed/sam3_ftw/
 ```
 
-Copy the config into SAM 3's config folder:
-
-```bash
-cp configs/sam3/lpbd_ftw.yaml external/sam3/sam3/train/configs/lpbd_ftw.yaml
-```
-
 The config expects the SAM 3 checkpoint at:
 
 ```text
-/kaggle/input/sam3-checkpoint/sam3.pt
+models/pretrained/sam3/sam3.pt
 ```
 
-Check the actual checkpoint path in your Kaggle notebook:
+If the SAM 3 checkpoint is attached as a Kaggle Dataset, find its mounted path:
 
 ```bash
 find /kaggle/input -name "sam3.pt"
 ```
 
-If the returned path is different, update `paths.checkpoint_path` in `configs/sam3/lpbd_ftw.yaml`, then copy the config again:
+Copy it into the repo checkpoint folder:
+
+```bash
+mkdir -p models/pretrained/sam3
+cp /kaggle/input/sam3-checkpoint/sam3.pt models/pretrained/sam3/sam3.pt
+```
+
+Adjust `/kaggle/input/sam3-checkpoint/sam3.pt` to the real path returned by `find`.
+
+Copy the config into SAM 3's config folder:
 
 ```bash
 cp configs/sam3/lpbd_ftw.yaml external/sam3/sam3/train/configs/lpbd_ftw.yaml

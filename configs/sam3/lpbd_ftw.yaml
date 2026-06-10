@@ -14,9 +14,7 @@
 # 1. Clone this repo to /kaggle/working/LPBD.
 # 2. Clone SAM 3 to /kaggle/working/LPBD/external/sam3.
 # 3. Prepare data/processed/sam3_ftw with scripts/prepare_sam3_ftw_dataset.py.
-# 4. Attach a Kaggle Dataset containing sam3.pt at:
-#      /kaggle/input/sam3-checkpoint/sam3.pt
-#    If your checkpoint mount path is different, change paths.checkpoint_path below.
+# 4. Place or copy sam3.pt to models/pretrained/sam3/sam3.pt.
 #
 # SAM 3's train.py searches configs inside external/sam3/sam3/train/configs.
 # Copy this file there before training:
@@ -36,7 +34,7 @@ paths:
   lpbd_root: ${paths.project_root}/data/processed/sam3_ftw
   experiment_log_dir: ${paths.project_root}/experiments/sam3_ftw_le200_full_finetune
   bpe_path: ${paths.project_root}/external/sam3/sam3/assets/bpe_simple_vocab_16e6.txt.gz
-  checkpoint_path: /kaggle/input/sam3-checkpoint/sam3.pt
+  checkpoint_path: ${paths.project_root}/models/pretrained/sam3/sam3.pt
 
 lpbd_train:
   train_transforms:

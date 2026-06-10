@@ -224,6 +224,12 @@ data/*
 # Models
 models/*
 !models/.gitkeep
+!models/pretrained/
+models/pretrained/*
+!models/pretrained/.gitkeep
+!models/pretrained/sam3/
+models/pretrained/sam3/*
+!models/pretrained/sam3/.gitkeep
 
 # External third-party repositories
 external/*
