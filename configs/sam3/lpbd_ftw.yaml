@@ -278,13 +278,14 @@ trainer:
       collate_fn: ${scratch.collate_fn_val}
 
   model:
-    _target_: sam3.model_builder.build_sam3_image_model
+    _target_: sam3.model_builder_lpbd.build_lpbd_sam3_image_model
     bpe_path: ${paths.bpe_path}
     device: cuda
     eval_mode: false
     enable_segmentation: ${scratch.enable_segmentation}
     checkpoint_path: ${paths.checkpoint_path}
     load_from_HF: false
+    freeze_backbone: true
 
   meters:
     val:
