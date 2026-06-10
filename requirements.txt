@@ -4,7 +4,7 @@ rasterio==1.4.4; python_version < "3.12"
 rasterio==1.5.0; python_version >= "3.12"
 torch==2.12.0
 torchvision==0.27.0
-numpy==2.4.6
+numpy==2.0.0
 matplotlib==3.10.9
 scikit-learn==1.9.0
 scikit-image==0.26.0
@@ -18,4 +18,4 @@ albumentations==2.0.8
 segmentation-models-pytorch==0.5.0
 ipykernel==7.2.0
 kaggle==2.2.1
-tqdm==4.68.2
+tqdm==4.67.2
