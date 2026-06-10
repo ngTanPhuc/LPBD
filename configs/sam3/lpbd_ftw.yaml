@@ -163,7 +163,7 @@ scratch:
     stable: false
 
   scale_by_find_batch_size: true
-  resolution: 512
+  resolution: 504
   consistent_transform: false
 
   train_norm_mean: [0.5, 0.5, 0.5]
@@ -217,7 +217,7 @@ trainer:
   max_epochs: ${scratch.max_data_epochs}
   accelerator: cuda
   seed_value: 123
-  val_epoch_freq: 5
+  val_epoch_freq: 1
   mode: train
   gradient_accumulation_steps: ${scratch.gradient_accumulation_steps}
 
@@ -305,7 +305,7 @@ trainer:
   optim:
     amp:
       enabled: true
-      amp_dtype: bfloat16
+      amp_dtype: float16
     optimizer:
       _target_: torch.optim.AdamW
     gradient_clip:
