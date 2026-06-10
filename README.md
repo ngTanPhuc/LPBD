@@ -113,6 +113,9 @@ data/*
 
 models/*
 !models/.gitkeep
+
+external/*
+!external/.gitkeep
 ```
 
 If a new dataset or model is added, upload it to Kaggle and update `scripts/download_artifacts.sh` with the new Kaggle slug.
@@ -124,6 +127,146 @@ This project is intended to evaluate:
 - SAM 3
 - YOLO26-seg
 - FTW baseline model
+
+## SAM 3
+
+The SAM 3 fine-tuning config is stored in:
+
+```text
+configs/sam3/lpbd_ftw.yaml
+```
+
+The config is written for the filtered FTW Vietnam dataset prepared by `scripts/prepare_sam3_ftw_dataset.py`. The prepared dataset should look like this:
+
+```text
+data/processed/sam3_ftw/
+├── annotations/
+│   ├── train.json
+│   ├── val.json
+│   └── test.json
+└── images/
+    ├── train/
+    ├── val/
+    └── test/
+```
+
+The current config assumes the filtered `<=200` parcels per image dataset:
+
+```text
+train: 45 images, 7556 annotations
+val:   12 images, 1687 annotations
+test:  3 images, 476 annotations
+```
+
+### Train SAM 3 On Kaggle
+
+The GitHub repo does not include `data/`, `models/`, or `external/sam3/`. On Kaggle, you must recreate or attach these artifacts before training.
+
+Recommended Kaggle setup:
+
+1. Create a Kaggle Notebook with GPU enabled.
+2. Attach the LPBD raw dataset Kaggle Dataset.
+3. Attach the SAM 3 pretrained checkpoint Kaggle Dataset.
+4. Clone this repo into `/kaggle/working`.
+5. Clone the SAM 3 repo into `external/sam3`.
+6. Prepare the filtered SAM 3 dataset.
+7. Copy the LPBD config into SAM 3's Hydra config folder.
+8. Launch training.
+
+Example Kaggle commands:
+
+```bash
+cd /kaggle/working
+git clone https://github.com/ngTanPhuc/LPBD.git
+cd LPBD
+
+pip install --upgrade pip
+pip install -r requirements.txt
+
+git clone https://github.com/facebookresearch/sam3.git external/sam3
+pip install -e "external/sam3[train]"
+```
+
+Kaggle mounts attached datasets under `/kaggle/input`. Check the exact folder names first:
+
+```bash
+find /kaggle/input -maxdepth 3 -type d
+```
+
+Copy or arrange the raw FTW Vietnam dataset so this path exists:
+
+```text
+data/raw/FTW_Vietnam/
+```
+
+For example, if Kaggle mounts the raw dataset at `/kaggle/input/land-parcel-boundary-delineation/FTW_Vietnam`, run:
+
+```bash
+mkdir -p data/raw
+cp -r /kaggle/input/land-parcel-boundary-delineation/FTW_Vietnam data/raw/FTW_Vietnam
+```
+
+Prepare the filtered SAM 3 dataset:
+
+```bash
+python scripts/prepare_sam3_ftw_dataset.py --clean-output --overwrite
+```
+
+This creates:
+
+```text
+data/processed/sam3_ftw/
+```
+
+Copy the config into SAM 3's config folder:
+
+```bash
+cp configs/sam3/lpbd_ftw.yaml external/sam3/sam3/train/configs/lpbd_ftw.yaml
+```
+
+If the SAM 3 checkpoint is attached as a Kaggle Dataset, use its mounted path as a config override. For example:
+
+```bash
+find /kaggle/input -name "sam3.pt"
+```
+
+Then train from the SAM 3 repo:
+
+```bash
+cd external/sam3
+
+python sam3/train/train.py \
+  -c configs/lpbd_ftw.yaml \
+  --use-cluster 0 \
+  --num-gpus 1 \
+  paths.project_root=/kaggle/working/LPBD \
+  paths.checkpoint_path=/kaggle/input/sam3-checkpoint/sam3.pt \
+  paths.experiment_log_dir=/kaggle/working/LPBD/experiments/sam3_ftw_le200_full_finetune
+```
+
+Adjust `paths.checkpoint_path` to the real path returned by `find /kaggle/input -name "sam3.pt"`.
+
+Training outputs will be written to:
+
+```text
+/kaggle/working/LPBD/experiments/sam3_ftw_le200_full_finetune/
+```
+
+### SAM 3 Config Notes
+
+The current config uses:
+
+```yaml
+scratch:
+  num_queries: 200
+  max_ann_per_img: 200
+  train_batch_size: 1
+  val_batch_size: 1
+  target_epoch_size: 45
+  max_data_epochs: 50
+```
+
+This is intentional because the dataset preparation script filters out chips with more than 200 parcel instances. If you train on unfiltered chips, update both the dataset and config; otherwise SAM 3 may not have enough queries for all parcels in dense images.
 
 ## Status
 
