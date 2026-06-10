@@ -1,4 +1,4 @@
-# Latest PyPI releases checked on 2026-06-08.
+# Latest PyPI releases checked on 10-6-2026.
 # Use the latest rasterio compatible with each Python version.
 rasterio==1.4.4; python_version < "3.12"
 rasterio==1.5.0; python_version >= "3.12"
@@ -16,5 +16,6 @@ geoai-py==0.40.1
 opencv-python==4.13.0.92
 albumentations==2.0.8
 segmentation-models-pytorch==0.5.0
-ipykernel==7.0.1
+ipykernel==7.2.0
 kaggle==2.2.1
+tqdm==4.68.2
