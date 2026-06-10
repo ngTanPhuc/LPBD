@@ -163,7 +163,7 @@ scratch:
     stable: false
 
   scale_by_find_batch_size: true
-  resolution: 504
+  resolution: 1008
   consistent_transform: false
 
   train_norm_mean: [0.5, 0.5, 0.5]
