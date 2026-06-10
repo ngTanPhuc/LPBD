@@ -224,3 +224,7 @@ data/*
 # Models
 models/*
 !models/.gitkeep
+
+# External third-party repositories
+external/*
+!external/.gitkeep
