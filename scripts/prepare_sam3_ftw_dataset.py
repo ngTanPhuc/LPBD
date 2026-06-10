@@ -14,9 +14,7 @@ import shutil
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-import rasterio
 from PIL import Image
 from tqdm.auto import tqdm
 
@@ -29,6 +27,9 @@ from lpbd.data.mask_annotations import extract_instance_objects
 from lpbd.data.tif2rgb import convert_tif_to_rgb
 
 VALID_SPLITS = {"train", "val", "test"}
+DEFAULT_MIN_AREA = 16
+DEFAULT_MIN_BBOX_WIDTH = 2
+DEFAULT_MIN_BBOX_HEIGHT = 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,8 +89,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-area",
         type=int,
-        default=5,
+        default=DEFAULT_MIN_AREA,
         help="Minimum parcel instance area, in pixels, to count and include in annotations.",
+    )
+    parser.add_argument(
+        "--min-bbox-width",
+        type=int,
+        default=DEFAULT_MIN_BBOX_WIDTH,
+        help="Minimum parcel bounding-box width, in pixels, to count and include in annotations.",
+    )
+    parser.add_argument(
+        "--min-bbox-height",
+        type=int,
+        default=DEFAULT_MIN_BBOX_HEIGHT,
+        help="Minimum parcel bounding-box height, in pixels, to count and include in annotations.",
     )
     return parser.parse_args()
 
@@ -123,14 +136,59 @@ def load_split_table(chips_path: Path) -> pd.DataFrame:
     return df.sort_values(["split", "aoi_id"]).reset_index(drop=True)
 
 
-def count_parcels(mask_path: Path, min_area: int) -> int:
-    """Count non-background parcel instances in one FTW instance mask."""
-    with rasterio.open(mask_path) as src:
-        mask = src.read(1)
+def passes_noise_filter(
+    obj,
+    *,
+    min_area: int,
+    min_bbox_width: int,
+    min_bbox_height: int,
+) -> bool:
+    """Return True when an extracted parcel is large enough for training."""
+    _, _, bbox_width, bbox_height = obj.bbox
+    return (
+        obj.area >= min_area
+        and bbox_width >= min_bbox_width
+        and bbox_height >= min_bbox_height
+    )
 
-    instance_ids, counts = np.unique(mask, return_counts=True)
-    keep = (instance_ids != 0) & (counts >= min_area)
-    return int(keep.sum())
+
+def extract_filtered_objects(
+    mask_path: Path,
+    *,
+    min_area: int,
+    min_bbox_width: int,
+    min_bbox_height: int,
+):
+    """Extract parcel instances after area and bbox noise filtering."""
+    objects = extract_instance_objects(mask_path, min_area=min_area)
+    return [
+        obj
+        for obj in objects
+        if passes_noise_filter(
+            obj,
+            min_area=min_area,
+            min_bbox_width=min_bbox_width,
+            min_bbox_height=min_bbox_height,
+        )
+    ]
+
+
+def count_parcels(
+    mask_path: Path,
+    *,
+    min_area: int,
+    min_bbox_width: int,
+    min_bbox_height: int,
+) -> int:
+    """Count parcel instances after area and bbox noise filtering."""
+    return len(
+        extract_filtered_objects(
+            mask_path,
+            min_area=min_area,
+            min_bbox_width=min_bbox_width,
+            min_bbox_height=min_bbox_height,
+        )
+    )
 
 
 def filter_rows_by_parcel_count(
@@ -139,6 +197,8 @@ def filter_rows_by_parcel_count(
     *,
     max_parcels: int,
     min_area: int,
+    min_bbox_width: int,
+    min_bbox_height: int,
     strict: bool,
 ) -> pd.DataFrame:
     """Keep only rows whose instance mask has <= max_parcels objects."""
@@ -154,7 +214,12 @@ def filter_rows_by_parcel_count(
             missing_masks.append(aoi_id)
             continue
 
-        parcel_count = count_parcels(mask_path, min_area=min_area)
+        parcel_count = count_parcels(
+            mask_path,
+            min_area=min_area,
+            min_bbox_width=min_bbox_width,
+            min_bbox_height=min_bbox_height,
+        )
         if parcel_count <= max_parcels:
             kept_rows.append(
                 {
@@ -279,6 +344,8 @@ def write_split_annotations(
     instance_mask_dir: Path,
     text_prompt: str,
     min_area: int,
+    min_bbox_width: int,
+    min_bbox_height: int,
     strict: bool,
 ) -> dict[str, int]:
     annotations_dir = output_root / "annotations"
@@ -324,7 +391,12 @@ def write_split_annotations(
                 image_id += 1
                 continue
 
-            for obj in extract_instance_objects(mask_path, min_area=min_area):
+            for obj in extract_filtered_objects(
+                mask_path,
+                min_area=min_area,
+                min_bbox_width=min_bbox_width,
+                min_bbox_height=min_bbox_height,
+            ):
                 annotations.append(
                     {
                         "id": annotation_id,
@@ -379,6 +451,8 @@ def main() -> None:
         instance_mask_dir,
         max_parcels=args.max_parcels,
         min_area=args.min_area,
+        min_bbox_width=args.min_bbox_width,
+        min_bbox_height=args.min_bbox_height,
         strict=args.strict,
     )
 
@@ -413,12 +487,20 @@ def main() -> None:
         instance_mask_dir=instance_mask_dir,
         text_prompt=args.text_prompt,
         min_area=args.min_area,
+        min_bbox_width=args.min_bbox_width,
+        min_bbox_height=args.min_bbox_height,
         strict=args.strict,
     )
 
     print("Filtered SAM 3 FTW dataset prepared")
     print(f"Output root: {output_root}")
     print(f"Max parcels per image: {args.max_parcels}")
+    print(
+        "Noise filter: "
+        f"area >= {args.min_area}, "
+        f"bbox width >= {args.min_bbox_width}, "
+        f"bbox height >= {args.min_bbox_height}"
+    )
     for split in sorted(counts):
         print(f"  {split}: {counts[split]} images, {annotation_counts[split]} annotations")
     if missing:

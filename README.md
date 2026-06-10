@@ -153,9 +153,9 @@ data/processed/sam3_ftw/
 The current config assumes the filtered `<=200` parcels per image dataset:
 
 ```text
-train: 45 images, 7556 annotations
-val:   12 images, 1687 annotations
-test:  3 images, 476 annotations
+train: 56 images, 9311 annotations
+val:   16 images, 2434 annotations
+test:  3 images, 438 annotations
 ```
 
 ### Train SAM 3 On Kaggle
@@ -272,11 +272,11 @@ scratch:
   max_ann_per_img: 200
   train_batch_size: 1
   val_batch_size: 1
-  target_epoch_size: 45
-  max_data_epochs: 50
+  target_epoch_size: 56
+  max_data_epochs: 10
 ```
 
-This is intentional because the dataset preparation script filters out chips with more than 200 parcel instances. If you train on unfiltered chips, update both the dataset and config; otherwise SAM 3 may not have enough queries for all parcels in dense images.
+This is intentional because the dataset preparation script removes noisy parcel annotations and filters out chips with more than 200 valid parcel instances. If you train on unfiltered chips, update both the dataset and config; otherwise SAM 3 may not have enough queries for all parcels in dense images.
 
 ## Status
 
