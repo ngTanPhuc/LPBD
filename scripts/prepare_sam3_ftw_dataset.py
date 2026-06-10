@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Prepare the FTW Vietnam RGB image split for SAM 3 training.
+"""Prepare a filtered FTW Vietnam dataset for SAM 3 training.
 
-This script expects the FTW raw data under data/raw/FTW_Vietnam and uses
-chips_vietnam.parquet to place RGB images into train/val/test folders.
+The pipeline starts by counting parcel instances in each mask and keeps only
+chips with parcel_count <= --max-parcels. RGB conversion, image staging, and
+annotation writing are then performed only for the filtered chips.
 """
 
 from __future__ import annotations
@@ -13,7 +14,9 @@ import shutil
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import rasterio
 from PIL import Image
 from tqdm.auto import tqdm
 
@@ -23,14 +26,14 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from lpbd.data.mask_annotations import extract_instance_objects
-from lpbd.data.tif2rgb import convert_tif_folder_to_rgb
+from lpbd.data.tif2rgb import convert_tif_to_rgb
 
 VALID_SPLITS = {"train", "val", "test"}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Prepare FTW Vietnam RGB images in SAM 3 train/val/test layout."
+        description="Prepare filtered FTW Vietnam RGB images and annotations for SAM 3."
     )
     parser.add_argument(
         "--project-root",
@@ -47,7 +50,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-name",
         default="sam3_ftw",
-        help="Folder name under data/processed for the prepared dataset.",
+        help="Folder name under data/processed for the filtered prepared dataset.",
+    )
+    parser.add_argument(
+        "--max-parcels",
+        type=int,
+        default=200,
+        help="Keep only images with this many parcel instances or fewer.",
     )
     parser.add_argument(
         "--move",
@@ -60,9 +69,14 @@ def parse_args() -> argparse.Namespace:
         help="Overwrite existing files in the prepared SAM 3 folder.",
     )
     parser.add_argument(
+        "--clean-output",
+        action="store_true",
+        help="Delete the output folder before preparing the filtered dataset.",
+    )
+    parser.add_argument(
         "--strict",
         action="store_true",
-        help="Fail if any parquet aoi_id has no matching RGB image.",
+        help="Fail if any selected row has missing image, RGB, or mask files.",
     )
     parser.add_argument("--lower", type=float, default=2, help="Lower percentile for RGB conversion.")
     parser.add_argument("--upper", type=float, default=98, help="Upper percentile for RGB conversion.")
@@ -74,8 +88,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-area",
         type=int,
-        default=1,
-        help="Minimum parcel instance area, in pixels, to include in annotations.",
+        default=5,
+        help="Minimum parcel instance area, in pixels, to count and include in annotations.",
     )
     return parser.parse_args()
 
@@ -83,54 +97,6 @@ def parse_args() -> argparse.Namespace:
 def require_path(path: Path, description: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"Missing {description}: {path}")
-
-
-def expected_tif_stems(tif_dir: Path) -> set[str]:
-    return {path.stem for path in tif_dir.glob("*.tif")}
-
-
-def existing_rgb_stems(rgb_dir: Path) -> set[str]:
-    return {path.stem for path in rgb_dir.glob("*.png")}
-
-
-def ensure_rgb_images(
-    raw_root: Path,
-    rgb_dir: Path,
-    window: str,
-    *,
-    lower: float,
-    upper: float,
-) -> None:
-    tif_dir = raw_root / "s2_images" / window
-    require_path(tif_dir, "raw Sentinel-2 image folder")
-
-    expected = expected_tif_stems(tif_dir)
-    if not expected:
-        raise RuntimeError(f"No .tif files found in {tif_dir}")
-
-    rgb_dir.mkdir(parents=True, exist_ok=True)
-    existing = existing_rgb_stems(rgb_dir)
-    missing = sorted(expected - existing)
-
-    if not missing:
-        print(f"RGB check passed: {len(existing & expected)}/{len(expected)} images exist in {rgb_dir}")
-        return
-
-    print(f"RGB check found {len(missing)} missing PNGs in {rgb_dir}")
-    print("Converting missing RGB inputs through lpbd.data.tif2rgb utilities...")
-
-    convert_tif_folder_to_rgb(tif_dir, rgb_dir, overwrite=False, lower=lower, upper=upper)
-
-    existing = existing_rgb_stems(rgb_dir)
-    missing = sorted(expected - existing)
-    if missing:
-        sample = ", ".join(missing[:10])
-        raise RuntimeError(
-            f"RGB conversion finished but {len(missing)} PNGs are still missing. "
-            f"Sample: {sample}"
-        )
-
-    print(f"RGB conversion complete: {len(existing & expected)}/{len(expected)} images exist")
 
 
 def load_split_table(chips_path: Path) -> pd.DataFrame:
@@ -157,7 +123,65 @@ def load_split_table(chips_path: Path) -> pd.DataFrame:
     return df.sort_values(["split", "aoi_id"]).reset_index(drop=True)
 
 
-def prepare_directories(output_root: Path) -> dict[str, Path]:
+def count_parcels(mask_path: Path, min_area: int) -> int:
+    """Count non-background parcel instances in one FTW instance mask."""
+    with rasterio.open(mask_path) as src:
+        mask = src.read(1)
+
+    instance_ids, counts = np.unique(mask, return_counts=True)
+    keep = (instance_ids != 0) & (counts >= min_area)
+    return int(keep.sum())
+
+
+def filter_rows_by_parcel_count(
+    split_df: pd.DataFrame,
+    instance_mask_dir: Path,
+    *,
+    max_parcels: int,
+    min_area: int,
+    strict: bool,
+) -> pd.DataFrame:
+    """Keep only rows whose instance mask has <= max_parcels objects."""
+    kept_rows: list[dict[str, object]] = []
+    missing_masks: list[str] = []
+    over_limit = 0
+
+    for row in tqdm(split_df.itertuples(index=False), total=len(split_df), desc="Counting parcels"):
+        aoi_id = row.aoi_id
+        mask_path = instance_mask_dir / f"{aoi_id}.tif"
+
+        if not mask_path.exists():
+            missing_masks.append(aoi_id)
+            continue
+
+        parcel_count = count_parcels(mask_path, min_area=min_area)
+        if parcel_count <= max_parcels:
+            kept_rows.append(
+                {
+                    "aoi_id": aoi_id,
+                    "split": row.split,
+                    "parcel_count": parcel_count,
+                }
+            )
+        else:
+            over_limit += 1
+
+    if missing_masks:
+        message = f"Missing {len(missing_masks)} instance masks. Sample: {missing_masks[:10]}"
+        if strict:
+            raise FileNotFoundError(message)
+        print(f"WARNING: {message}")
+
+    filtered_df = pd.DataFrame(kept_rows, columns=["aoi_id", "split", "parcel_count"])
+    print(f"Kept {len(filtered_df)} chips with <= {max_parcels} parcels")
+    print(f"Skipped {over_limit} chips with > {max_parcels} parcels")
+    return filtered_df.sort_values(["split", "aoi_id"]).reset_index(drop=True)
+
+
+def prepare_directories(output_root: Path, *, clean_output: bool) -> dict[str, Path]:
+    if clean_output and output_root.exists():
+        shutil.rmtree(output_root)
+
     annotations_dir = output_root / "annotations"
     images_root = output_root / "images"
     split_dirs = {split: images_root / split for split in sorted(VALID_SPLITS)}
@@ -169,8 +193,44 @@ def prepare_directories(output_root: Path) -> dict[str, Path]:
     return split_dirs
 
 
+def ensure_rgb_images(
+    filtered_df: pd.DataFrame,
+    *,
+    tif_dir: Path,
+    rgb_dir: Path,
+    lower: float,
+    upper: float,
+    strict: bool,
+) -> list[str]:
+    """Convert RGB only for selected chips that do not already have PNGs."""
+    rgb_dir.mkdir(parents=True, exist_ok=True)
+    missing_tifs: list[str] = []
+
+    for row in tqdm(filtered_df.itertuples(index=False), total=len(filtered_df), desc="Checking RGB inputs"):
+        aoi_id = row.aoi_id
+        tif_path = tif_dir / f"{aoi_id}.tif"
+        rgb_path = rgb_dir / f"{aoi_id}.png"
+
+        if rgb_path.exists():
+            continue
+
+        if not tif_path.exists():
+            missing_tifs.append(aoi_id)
+            continue
+
+        convert_tif_to_rgb(tif_path, rgb_path, overwrite=False, lower=lower, upper=upper)
+
+    if missing_tifs:
+        message = f"Missing {len(missing_tifs)} source TIF files. Sample: {missing_tifs[:10]}"
+        if strict:
+            raise FileNotFoundError(message)
+        print(f"WARNING: {message}")
+
+    return missing_tifs
+
+
 def stage_rgb_images(
-    split_df: pd.DataFrame,
+    filtered_df: pd.DataFrame,
     rgb_dir: Path,
     split_dirs: dict[str, Path],
     *,
@@ -182,7 +242,7 @@ def stage_rgb_images(
     counts = {split: 0 for split in sorted(VALID_SPLITS)}
     missing: list[str] = []
 
-    for row in tqdm(split_df.itertuples(index=False), total=len(split_df), desc="Staging RGB images"):
+    for row in tqdm(filtered_df.itertuples(index=False), total=len(filtered_df), desc="Staging RGB images"):
         aoi_id = row.aoi_id
         split = row.split
         src = rgb_dir / f"{aoi_id}.png"
@@ -203,7 +263,7 @@ def stage_rgb_images(
         counts[split] += 1
 
     if missing:
-        message = f"Missing {len(missing)} RGB images referenced by parquet. Sample: {missing[:10]}"
+        message = f"Missing {len(missing)} selected RGB images. Sample: {missing[:10]}"
         if strict:
             raise FileNotFoundError(message)
         print(f"WARNING: {message}")
@@ -212,7 +272,7 @@ def stage_rgb_images(
 
 
 def write_split_annotations(
-    split_df: pd.DataFrame,
+    filtered_df: pd.DataFrame,
     *,
     output_root: Path,
     split_dirs: dict[str, Path],
@@ -232,7 +292,7 @@ def write_split_annotations(
         annotations = []
         image_id = 1
         annotation_id = 1
-        split_rows = split_df[split_df["split"] == split]
+        split_rows = filtered_df[filtered_df["split"] == split]
 
         for row in tqdm(split_rows.itertuples(index=False), total=len(split_rows), desc=f"Writing {split} annotations"):
             aoi_id = row.aoi_id
@@ -252,6 +312,7 @@ def write_split_annotations(
                     "width": width,
                     "height": height,
                     "text_input": text_prompt,
+                    "parcel_count": int(row.parcel_count),
                 }
             )
 
@@ -299,28 +360,44 @@ def main() -> None:
     args = parse_args()
     project_root = args.project_root.resolve()
 
-    # Resolve the raw FTW input paths and the processed output locations
     raw_root = project_root / "data" / "raw" / "FTW_Vietnam"
     processed_root = project_root / "data" / "processed"
+    tif_dir = raw_root / "s2_images" / args.window
     rgb_dir = processed_root / "rgb" / args.window
     output_root = processed_root / args.output_name
     chips_path = raw_root / "chips_vietnam.parquet"
     instance_mask_dir = raw_root / "label_masks" / "instance"
 
-    # Ensure the raw dataset exists, then create RGB PNGs if they are missing
     require_path(raw_root, "FTW Vietnam raw folder")
+    require_path(tif_dir, "FTW Sentinel-2 image folder")
     require_path(instance_mask_dir, "FTW instance mask folder")
-    ensure_rgb_images(raw_root, rgb_dir, args.window, lower=args.lower, upper=args.upper)
 
-    # Read train/val/test assignments from the FTW chip metadata parquet
+    # Step 1: determine which chips satisfy parcel_count <= max_parcels.
     split_df = load_split_table(chips_path)
-
-    # Create the SAM 3 folder layout: annotations/ and images/{train,val,test}/
-    split_dirs = prepare_directories(output_root)
-
-    # Copy or move each RGB image into the split folder defined by the parquet
-    counts, missing = stage_rgb_images(
+    filtered_df = filter_rows_by_parcel_count(
         split_df,
+        instance_mask_dir,
+        max_parcels=args.max_parcels,
+        min_area=args.min_area,
+        strict=args.strict,
+    )
+
+    # Step 2: only create/check RGB PNGs for selected chips.
+    ensure_rgb_images(
+        filtered_df,
+        tif_dir=tif_dir,
+        rgb_dir=rgb_dir,
+        lower=args.lower,
+        upper=args.upper,
+        strict=args.strict,
+    )
+
+    # Step 3: create the filtered SAM 3 folder layout.
+    split_dirs = prepare_directories(output_root, clean_output=args.clean_output)
+
+    # Step 4: only stage selected RGB images into split folders.
+    counts, missing = stage_rgb_images(
+        filtered_df,
         rgb_dir,
         split_dirs,
         move=args.move,
@@ -328,9 +405,9 @@ def main() -> None:
         strict=args.strict,
     )
 
-    # Convert instance-mask TIF files into SAM 3/COCO-style JSON annotations
+    # Step 5: only write annotations for selected images.
     annotation_counts = write_split_annotations(
-        split_df,
+        filtered_df,
         output_root=output_root,
         split_dirs=split_dirs,
         instance_mask_dir=instance_mask_dir,
@@ -339,12 +416,13 @@ def main() -> None:
         strict=args.strict,
     )
 
-    print("SAM 3 FTW image dataset prepared")
+    print("Filtered SAM 3 FTW dataset prepared")
     print(f"Output root: {output_root}")
+    print(f"Max parcels per image: {args.max_parcels}")
     for split in sorted(counts):
         print(f"  {split}: {counts[split]} images, {annotation_counts[split]} annotations")
     if missing:
-        print(f"  missing parquet entries without RGB: {len(missing)}")
+        print(f"  missing selected RGB entries: {len(missing)}")
 
 
 if __name__ == "__main__":
