@@ -223,8 +223,9 @@ trainer:
 
   distributed:
     backend: nccl
-    find_unused_parameters: true
-    gradient_as_bucket_view: true
+    find_unused_parameters: false
+    gradient_as_bucket_view: false
+    static_graph: true
 
   loss:
     all: ${lpbd_train.loss}
