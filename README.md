@@ -224,13 +224,25 @@ Copy the config into SAM 3's config folder:
 cp configs/sam3/lpbd_ftw.yaml external/sam3/sam3/train/configs/lpbd_ftw.yaml
 ```
 
-If the SAM 3 checkpoint is attached as a Kaggle Dataset, use its mounted path as a config override. For example:
+The config expects the SAM 3 checkpoint at:
+
+```text
+/kaggle/input/sam3-checkpoint/sam3.pt
+```
+
+Check the actual checkpoint path in your Kaggle notebook:
 
 ```bash
 find /kaggle/input -name "sam3.pt"
 ```
 
-Then train from the SAM 3 repo:
+If the returned path is different, update `paths.checkpoint_path` in `configs/sam3/lpbd_ftw.yaml`, then copy the config again:
+
+```bash
+cp configs/sam3/lpbd_ftw.yaml external/sam3/sam3/train/configs/lpbd_ftw.yaml
+```
+
+Train from the SAM 3 repo:
 
 ```bash
 cd external/sam3
@@ -238,13 +250,8 @@ cd external/sam3
 python sam3/train/train.py \
   -c configs/lpbd_ftw.yaml \
   --use-cluster 0 \
-  --num-gpus 1 \
-  paths.project_root=/kaggle/working/LPBD \
-  paths.checkpoint_path=/kaggle/input/sam3-checkpoint/sam3.pt \
-  paths.experiment_log_dir=/kaggle/working/LPBD/experiments/sam3_ftw_le200_full_finetune
+  --num-gpus 1
 ```
-
-Adjust `paths.checkpoint_path` to the real path returned by `find /kaggle/input -name "sam3.pt"`.
 
 Training outputs will be written to:
 

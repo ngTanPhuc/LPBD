@@ -10,25 +10,33 @@
 #   val:   12 images, 1687 annotations, max 200 parcels/image
 #   test:  3 images, 476 annotations, max 191 parcels/image
 #
+# Kaggle-first usage:
+# 1. Clone this repo to /kaggle/working/LPBD.
+# 2. Clone SAM 3 to /kaggle/working/LPBD/external/sam3.
+# 3. Prepare data/processed/sam3_ftw with scripts/prepare_sam3_ftw_dataset.py.
+# 4. Attach a Kaggle Dataset containing sam3.pt at:
+#      /kaggle/input/sam3-checkpoint/sam3.pt
+#    If your checkpoint mount path is different, change paths.checkpoint_path below.
+#
 # SAM 3's train.py searches configs inside external/sam3/sam3/train/configs.
 # Copy this file there before training:
 #   cp configs/sam3/lpbd_ftw.yaml external/sam3/sam3/train/configs/lpbd_ftw.yaml
 #
 # Then run from external/sam3:
 #   cd external/sam3
-#   ../../.venv/bin/python sam3/train/train.py -c configs/lpbd_ftw.yaml --use-cluster 0 --num-gpus 1
+#   python sam3/train/train.py -c configs/lpbd_ftw.yaml --use-cluster 0 --num-gpus 1
 
 
 defaults:
   - _self_
 
 paths:
-  # Keep this relative to external/sam3 because SAM 3 training is launched there.
-  project_root: ../..
+  # Kaggle default project location after cloning this repo.
+  project_root: /kaggle/working/LPBD
   lpbd_root: ${paths.project_root}/data/processed/sam3_ftw
   experiment_log_dir: ${paths.project_root}/experiments/sam3_ftw_le200_full_finetune
   bpe_path: ${paths.project_root}/external/sam3/sam3/assets/bpe_simple_vocab_16e6.txt.gz
-  checkpoint_path: ${paths.project_root}/models/pretrained/sam3/sam3.pt
+  checkpoint_path: /kaggle/input/sam3-checkpoint/sam3.pt
 
 lpbd_train:
   train_transforms:
