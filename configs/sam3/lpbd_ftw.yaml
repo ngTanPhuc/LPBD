@@ -172,21 +172,21 @@ scratch:
   val_norm_mean: [0.5, 0.5, 0.5]
   val_norm_std: [0.5, 0.5, 0.5]
 
-  train_batch_size: 1
+  train_batch_size: 4
   val_batch_size: 1
-  num_train_workers: 0
-  num_val_workers: 0
+  num_train_workers: 8
+  num_val_workers: 4
 
   # Small filtered dataset: one epoch is one pass over the 56 training images.
   # Increase max_data_epochs after a smoke test succeeds.
-  max_data_epochs: 20
+  max_data_epochs: 50
   target_epoch_size: 56
   hybrid_repeats: 1
   context_length: 2
   gather_pred_via_filesys: false
 
   gradient_accumulation_steps: 1
-  lr_scale: 0.1
+  lr_scale: 0.05
   lr_transformer: ${times:8e-4,${scratch.lr_scale}}
   lr_vision_backbone: ${times:2.5e-4,${scratch.lr_scale}}
   lr_language_backbone: ${times:5e-5,${scratch.lr_scale}}
@@ -308,7 +308,7 @@ trainer:
   optim:
     amp:
       enabled: true
-      amp_dtype: float16
+      amp_dtype: bfloat16
     optimizer:
       _target_: torch.optim.AdamW
     gradient_clip:
