@@ -80,14 +80,14 @@ The script downloads:
 
 ```bash
 kaggle datasets download -d ngtanphuc020505/land-parcel-boundary-delineation -p data/raw --unzip
-kaggle datasets download -d ngtanphuc020505/sam-3_pretrained -p models/pretrained --unzip
+kaggle models get ngtanphuc020505/sam-3-pretrained -p models/pretrained/sam3
 ```
 
 After this step, the expected local folders are:
 
 ```text
-data/raw/              # Dataset files from Kaggle
-models/pretrained/     # Pretrained model files from Kaggle
+data/raw/                         # FTW Vietnam dataset files from Kaggle
+models/pretrained/sam3/           # SAM 3 pretrained model files from Kaggle
 ```
 
 These folders are intentionally ignored by Git because they contain large artifacts.
@@ -224,20 +224,24 @@ The config expects the SAM 3 checkpoint at:
 models/pretrained/sam3/sam3.pt
 ```
 
-If the SAM 3 checkpoint is attached as a Kaggle Dataset, find its mounted path:
+If you used `scripts/download_artifacts.sh`, verify the checkpoint exists:
+
+```bash
+find models/pretrained/sam3 -name "sam3.pt"
+```
+
+If you attached the SAM 3 checkpoint as a separate Kaggle Dataset instead of using the script, find its mounted path:
 
 ```bash
 find /kaggle/input -name "sam3.pt"
 ```
 
-Copy it into the repo checkpoint folder:
+Then copy it into the repo checkpoint folder:
 
 ```bash
 mkdir -p models/pretrained/sam3
-cp /kaggle/input/sam3-checkpoint/sam3.pt models/pretrained/sam3/sam3.pt
+cp /kaggle/input/YOUR_SAM3_DATASET/sam3.pt models/pretrained/sam3/sam3.pt
 ```
-
-Adjust `/kaggle/input/sam3-checkpoint/sam3.pt` to the real path returned by `find`.
 
 Copy the config into SAM 3's config folder:
 
