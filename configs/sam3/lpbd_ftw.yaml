@@ -30,7 +30,7 @@ defaults:
 
 paths:
   # Kaggle default project location after cloning this repo.
-  project_root: /kaggle/working/LPBD
+  project_root: ../..
   lpbd_root: ${paths.project_root}/data/processed/sam3_ftw
   experiment_log_dir: ${paths.project_root}/experiments/sam3_ftw_le200_full_finetune
   bpe_path: ${paths.project_root}/external/sam3/sam3/assets/bpe_simple_vocab_16e6.txt.gz
