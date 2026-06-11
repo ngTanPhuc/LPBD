@@ -179,7 +179,7 @@ scratch:
 
   # Small filtered dataset: one epoch is one pass over the 56 training images.
   # Increase max_data_epochs after a smoke test succeeds.
-  max_data_epochs: 10
+  max_data_epochs: 20
   target_epoch_size: 56
   hybrid_repeats: 1
   context_length: 2
@@ -360,7 +360,7 @@ trainer:
 
   checkpoint:
     save_dir: ${launcher.experiment_log_dir}/checkpoints
-    save_freq: 2
+    save_freq: 5
 
   logging:
     tensorboard_writer:
