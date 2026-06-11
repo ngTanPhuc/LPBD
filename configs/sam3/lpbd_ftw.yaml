@@ -32,7 +32,7 @@ paths:
   # Kaggle default project location after cloning this repo.
   project_root: ../..
   lpbd_root: ${paths.project_root}/data/processed/sam3_ftw
-  experiment_log_dir: ${paths.project_root}/experiments/sam3_ftw_le200_full_finetune
+  experiment_log_dir: ${paths.project_root}/experiments/sam3_ftw_finetune
   bpe_path: ${paths.project_root}/external/sam3/sam3/assets/bpe_simple_vocab_16e6.txt.gz
   checkpoint_path: ${paths.project_root}/models/pretrained/sam3/sam3.pt
 
@@ -218,7 +218,7 @@ trainer:
   max_epochs: ${scratch.max_data_epochs}
   accelerator: cuda
   seed_value: 123
-  val_epoch_freq: 1
+  val_epoch_freq: 2
   mode: train
   gradient_accumulation_steps: ${scratch.gradient_accumulation_steps}
 
@@ -360,7 +360,7 @@ trainer:
 
   checkpoint:
     save_dir: ${launcher.experiment_log_dir}/checkpoints
-    save_freq: 1
+    save_freq: 2
 
   logging:
     tensorboard_writer:
