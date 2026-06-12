@@ -360,7 +360,7 @@ trainer:
 
   checkpoint:
     save_dir: ${launcher.experiment_log_dir}/checkpoints
-    save_freq: 5
+    save_freq: 1
 
   logging:
     tensorboard_writer:
